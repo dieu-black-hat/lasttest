@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate ArUco Codes</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #result {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .image-container {
+            margin: 10px;
+            text-align: center;
+        }
+        #result img {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 200px;
+            height: auto;
+        }
+        @media print {
+            #printButton { display: none; }
+        }
+        #scanSection {
+            margin-top: 30px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        #videoContainer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            position: relative;
+        }
+        #video {
+            border: 2px solid #444;
+            border-radius: 10px;
+            max-width: 90%;
+            height: auto;
+        }
+        #loadingMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2em;
+            background: rgba(255,255,255,0.8);
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        #statusMessage {
+            margin-top: 10px;
+            font-weight: bold;
+            color: green;
+        }
+        #refreshButton {
+            margin-top: 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #007BFF;
+            color: white;
+            cursor: pointer;
+        }
+        #refreshButton:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Generate ArUco Codes</h1>
+    <button id="generateButton">Generate ArUco Codes</button>
+    <button id="printButton">Print Codes</button>
+    <div id="result"></div>
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+    <div id="scanSection">
+        <h2>Live Video Feed with Navigation Path</h2>
+        <div id="videoContainer">
+            <img src="/video_feed/0/" id="video" alt="Live Feed could not be loaded">
+            <div id="loadingMessage">Loading camera feed...</div>
+        </div>
+        <button id="refreshButton">🔄 Refresh Feed</button>
+        <div id="statusMessage">Live AR Navigation Active</div>
+    </div>
+
+    <script>
+        // ------------------------
+        // Generate ArUco Codes
+        // ------------------------
+        document.getElementById('generateButton').addEventListener('click', () => {
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            fetch('/generate-aruco/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrftoken, 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            })
+            .then(res => res.json())
+            .then(data => {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = '';
+                if (data.success) {
+                    resultDiv.innerHTML = '<h2>Generated Files:</h2>';
+                    data.files.forEach(item => {
+                        const container = document.createElement('div');
+                        container.className = 'image-container';
+                        const img = document.createElement('img');
+                        img.src = item.file;
+                        img.alt = `ArUco ID ${item.id}`;
+                        const label = document.createElement('div');
+                        label.textContent = `ID: ${item.id}, Location: ${item.location}`;
+                        container.appendChild(img);
+                        container.appendChild(label);
+                        resultDiv.appendChild(container);
+                    });
+                } else { alert('Failed to generate codes.'); }
+            })
+            .catch(err => { console.error(err); alert('Error generating codes.'); });
+        });
+
+        // Print button
+        document.getElementById('printButton').addEventListener('click', () => window.print());
+
+        // ------------------------
+        // Video feed handling
+        // ------------------------
+        const video = document.getElementById('video');
+        const statusMessage = document.getElementById('statusMessage');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        function refreshVideo() {
+            loadingMessage.style.display = "block";
+            video.src = "/video_feed/0/?t=" + new Date().getTime(); // cache-busting reload
+        }
+
+        // Refresh button
+        document.getElementById('refreshButton').addEventListener('click', refreshVideo);
+
+        // Show loading until video is loaded
+        video.addEventListener("load", () => {
+            loadingMessage.style.display = "none";
+            statusMessage.textContent = "Live AR Navigation Active";
+            statusMessage.style.color = "green";
+        });
+
+        // Error handling
+        video.addEventListener("error", () => {
+            loadingMessage.style.display = "none";
+            statusMessage.textContent = "❌ Error: Cannot load camera feed";
+            statusMessage.style.color = "red";
+        });
+
+        // Auto-reconnect every 60s
+        setInterval(refreshVideo, 60000);
+    </script>
+</body>
+</html>

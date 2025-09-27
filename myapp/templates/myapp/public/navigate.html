@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Destination</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #fff;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .content {
+      max-width: 600px; /* Set a maximum width for consistency */
+      margin: 0 auto; /* Center the content */
+    }
+
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 10px;
+    }
+
+    p {
+      margin-bottom: 20px;
+    }
+
+    .destination-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .destination-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .destination-name {
+      flex-grow: 1;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      background: #e0e0e0;
+      border: 1px solid #aaa;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #d5d5d5;
+    }
+
+    .section-title {
+      font-weight: bold;
+      margin-top: 20px;
+    }
+
+    .footer {
+      margin-top: 30px;
+    }
+
+    .change-btn {
+      margin-top: 10px;
+      display: inline-block;
+      background: #f5f5f5;
+      border: 1px solid #aaa;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    .change-btn:hover {
+      background: #ddd;
+    }
+
+    .info-message {
+      margin-top: 20px;
+      padding: 12px;
+      background: #e7f3fe;
+      border: 1px solid #b3d7ff;
+      display: none; /* Hidden by default */
+    }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <h1>&lt; Choose destination</h1>
+    <p>Choose where you want to go:</p>
+
+    <ul class="destination-list">
+      <li class="destination-item">
+        <span class="destination-name">Classroom 01</span>
+        <div class="buttons">
+          <button onclick="showInfo('Classroom 01 is located on the ground floor, near the main entrance. Move forward for 5 meters, turn left, and then move 10 meters. You will reach your destination.')">Info</button>
+          <button onclick="window.location.href='{% url 'camera' %}'">Navigate</button> <!-- Redirect to camera page -->
+        </div>
+      </li>
+      <li class="destination-item">
+        <span class="destination-name">Classroom 02</span>
+        <div class="buttons">
+          <button onclick="showInfo('Classroom 02 is located on the first floor, above the cafeteria.')">Info</button>
+          <button onclick="window.location.href='{% url 'camera' %}'">Navigate</button> <!-- Redirect to camera page -->
+        </div>
+      </li>
+      <li class="destination-item">
+        <span class="destination-name">Classroom 03</span>
+        <div class="buttons">
+          <button onclick="showInfo('Classroom 03 is located on the second floor, next to the library.')">Info</button>
+          <button onclick="window.location.href='{% url 'camera' %}'">Navigate</button> <!-- Redirect to camera page -->
+        </div>
+      </li>
+      <!-- Additional classrooms can be added here -->
+    </ul>
+
+    <div class="section-title">1. Other Options</div>
+
+    <ul class="destination-list">
+      <li class="destination-item">
+        <span class="destination-name">...</span>
+        <div class="buttons">
+          <button>Info</button>
+          <button onclick="window.location.href='{% url 'camera' %}'">Navigate</button> <!-- Redirect to camera page -->
+        </div>
+      </li>
+    </ul>
+
+    <div class="footer">
+      <p><strong>Selected building:</strong><br>
+      Classrooms are on Ground Floor, First and Second Floor</p>
+      <button class="change-btn">Change building</button>
+    </div>
+
+    <div class="info-message" id="infoMessage"></div>
+  </div>
+
+  <script>
+    function showInfo(message) {
+      const infoMessage = document.getElementById('infoMessage');
+      infoMessage.textContent = message;
+      infoMessage.style.display = 'block'; // Show the message
+    }
+  </script>
+</body>
+</html>

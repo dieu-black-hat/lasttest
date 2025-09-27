@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera View</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column; /* Stack elements vertically */
+      justify-content: center; /* Center horizontally */
+      align-items: center; /* Center vertically */
+      height: 100vh; /* Full viewport height */
+      font-family: Arial, sans-serif;
+      background: #fff;
+      color: #333;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 1.8em;
+      margin-bottom: 20px; /* Space between title and video */
+    }
+
+    video {
+      width: 100%;
+      max-width: 600px; /* Match the content width */
+      border: 1px solid #ddd;
+      margin-bottom: 20px; /* Space between video and dropdown */
+    }
+
+    select {
+      padding: 10px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Camera View (Live Guidance)</h1>
+    <video id="video" autoplay playsinline></video>
+    <select id="cameraSelect"></select>
+  </div>
+
+  <script>
+    let currentStream;
+
+    async function startCamera() {
+      const video = document.getElementById('video');
+      const cameraSelect = document.getElementById('cameraSelect');
+
+      try {
+        // Get the list of media devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+        // Populate the dropdown with available video devices
+        videoDevices.forEach(device => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Camera ${cameraSelect.length + 1}`; // Fallback name
+          cameraSelect.appendChild(option);
+        });
+
+        // Start the video stream from the selected camera
+        if (videoDevices.length > 0) {
+          changeCamera(videoDevices[0].deviceId); // Start with the first camera
+        }
+
+        // Handle camera selection change
+        cameraSelect.onchange = () => {
+          changeCamera(cameraSelect.value);
+        };
+      } catch (error) {
+        console.error('Error accessing the camera: ', error);
+      }
+    }
+
+    async function changeCamera(deviceId) {
+      const video = document.getElementById('video');
+
+      // Stop the current stream if it exists
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      // Get the media stream from the selected camera
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } }
+        });
+        video.srcObject = stream;
+        currentStream = stream;
+      } catch (error) {
+        console.error('Error accessing the selected camera: ', error);
+      }
+    }
+
+    // Start the camera when the page loads
+    window.onload = startCamera;
+  </script>
+</body>
+</html>
