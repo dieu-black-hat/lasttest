@@ -1,12 +1,20 @@
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 SECRET_KEY = 'django-insecure-fl%!x%za!8i6ghp_6i(_r0+34$saawd3w_jsg&!00ac4v!aq@8'
+
 DEBUG = True
-ALLOWED_HOSTS = []
+
+# ✅ Allow both local dev and Render deployment
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "lasttest-3.onrender.com",  # Render domain
+]
 
 # Application definition
 INSTALLED_APPS = [
