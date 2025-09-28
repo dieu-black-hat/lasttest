@@ -1,17 +1,10 @@
 from django.shortcuts import render, redirect
 from django import forms
+from .models import Registration
 from django.contrib.auth.hashers import make_password
-from django.contrib import messages
-from django.conf import settings
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import cv2
-import numpy as np
-import os
+from django.contrib import messages  # Import messages framework
 
-# ==============================
-# Placeholder views for pages
-# ==============================
+# Views for rendering pages
 def index(request):
     return render(request, 'myapp/public/index.html')
 
@@ -27,18 +20,16 @@ def camera(request):
 def generatecode(request):
     return render(request, 'myapp/public/generatecode.html')
 
+
+
+
 def room(request):
     return render(request, 'myapp/public/room.html')
 
 def login(request):
     return render(request, 'myapp/public/login.html')
 
-
-# ==============================
-# Registration form & view
-# ==============================
-from .models import Registration
-
+# Registration model form
 class RegistrationForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput)
 
@@ -53,22 +44,27 @@ class RegistrationForm(forms.ModelForm):
             user.save()
         return user
 
+# Registration view
 def register(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Registration successful!')
-            return redirect('login')
+            messages.success(request, 'Registration successful!')  # Add success message
+            return redirect('login')  # Redirect to login page or any other page
         else:
-            messages.error(request, 'Please correct the errors below.')
+            messages.error(request, 'Please correct the errors below.')  # Add error message
     else:
         form = RegistrationForm()
     return render(request, 'myapp/public/register.html', {'form': form})
 
+from django.http import JsonResponse, StreamingHttpResponse
+from django.views.decorators.csrf import csrf_exempt
+import cv2
+import numpy as np
 
 # ==============================
-# ArUco & Camera setup
+# Example location mapping for IDs with coordinates
 # ==============================
 LOCATION_MAPPING = {
     0: {"name": "Location A", "coords": (0, 0)},
@@ -83,12 +79,14 @@ LOCATION_MAPPING = {
     9: {"name": "Location J", "coords": (9, 0)},
 }
 
+# ==============================
+# Camera calibration parameters
+# ==============================
 camera_matrix = np.array([[800, 0, 320],
                           [0, 800, 240],
                           [0, 0, 1]], dtype=np.float32)
-dist_coeffs = np.zeros((5, 1))
-MARKER_SIZE = 0.05
-
+dist_coeffs = np.zeros((5, 1))  # Update with actual calibration if available
+MARKER_SIZE = 0.05  # Marker size in meters
 
 # ==============================
 # Generate ArUco codes
@@ -96,29 +94,123 @@ MARKER_SIZE = 0.05
 @csrf_exempt
 def generate_aruco_codes(request):
     if request.method == 'POST':
-        num_codes = len(LOCATION_MAPPING)
+        num_codes = 10
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         generated_files = []
 
-        # Save codes in MEDIA_ROOT
-        output_dir = os.path.join(settings.MEDIA_ROOT, "aruco_codes")
-        os.makedirs(output_dir, exist_ok=True)
-
         for i in range(num_codes):
             marker_img = cv2.aruco.generateImageMarker(aruco_dict, i, 200)
-            filename = os.path.join(output_dir, f"aruco_code_{i}.png")
+            filename = f'GuideMe/static/aruco_codes/aruco_code_{i}.png'
             cv2.imwrite(filename, marker_img)
 
             generated_files.append({
                 'id': str(i),
                 'location': LOCATION_MAPPING[i]['name'],
-                'file': f"{settings.MEDIA_URL}aruco_codes/aruco_code_{i}.png"
+                'file': f'/static/aruco_codes/aruco_code_{i}.png'
             })
 
         return JsonResponse({'success': True, 'files': generated_files})
 
     return JsonResponse({'success': False}, status=400)
 
+# ==============================
+# Generate live frames with AR overlay (persistent arrow)
+# ==============================
+def generate_frames(camera_index):
+    cap = cv2.VideoCapture(camera_index)
+    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+    parameters = cv2.aruco.DetectorParameters()
+    detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
+
+    # Store last arrow and text to persist on screen
+    last_arrow = None
+    last_text = {"current": None, "next": None}
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            corners, ids, _ = detector.detectMarkers(gray)
+
+            if ids is not None:
+                cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+
+                # Pose estimation
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
+                    corners, MARKER_SIZE, camera_matrix, dist_coeffs
+                )
+
+                # Select closest marker
+                closest_index = np.argmin(tvecs[:, 0, 2])
+                marker_id = int(ids[closest_index][0])
+                rvec, tvec = rvecs[closest_index], tvecs[closest_index]
+
+                # Draw axis for visualization
+                cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.05)
+
+                # Compute arrow to next location
+                current_location = LOCATION_MAPPING.get(marker_id, {"name": "Unknown", "coords": (0, 0)})
+                next_id = marker_id + 1 if marker_id + 1 in LOCATION_MAPPING else None
+
+                if next_id is not None:
+                    next_location = LOCATION_MAPPING[next_id]
+
+                    dx = next_location['coords'][0] - current_location['coords'][0]
+                    dy = next_location['coords'][1] - current_location['coords'][1]
+                    dz = 0
+
+                    # Scale vector so it's visible in AR space
+                    scale = 5.0
+                    arrow_3D = np.float32([[0, 0, 0], [dx * scale, dy * scale, dz]])
+                    imgpts, _ = cv2.projectPoints(arrow_3D, rvec, tvec, camera_matrix, dist_coeffs)
+
+                    pt1 = tuple(imgpts[0].ravel().astype(int))
+                    pt2 = tuple(imgpts[1].ravel().astype(int))
+
+                    # Save arrow + labels persistently
+                    last_arrow = (pt1, pt2)
+                    last_text["current"] = current_location['name']
+                    last_text["next"] = next_location['name']
+                else:
+                    last_arrow = None
+                    last_text["current"] = current_location['name']
+                    last_text["next"] = "End of Path"
+
+            # ---------------------------
+            # Draw last arrow if available
+            # ---------------------------
+            if last_arrow is not None:
+                pt1, pt2 = last_arrow
+                cv2.arrowedLine(frame, pt1, pt2, (0, 255, 0), 8, tipLength=0.4)
+
+            if last_text["current"]:
+                cv2.putText(frame, f"Current: {last_text['current']}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            if last_text["next"]:
+                color = (255, 0, 0) if last_text["next"] != "End of Path" else (0, 0, 255)
+                cv2.putText(frame, f"Next: {last_text['next']}",
+                            (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+            # Encode frame
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    finally:
+        cap.release()
+
+# ==============================
+# Video feed endpoint
+# ==============================
+def video_feed(request, camera_index):
+    camera_index = int(camera_index)
+    return StreamingHttpResponse(generate_frames(camera_index),
+                                 content_type='multipart/x-mixed-replace; boundary=frame')
 
 # ==============================
 # Scan uploaded image for ArUco markers
@@ -172,10 +264,3 @@ def scan_aruco(request):
         return JsonResponse({"success": False, "message": "No markers detected"})
 
     return JsonResponse({"success": False, "message": "Invalid request"}, status=400)
-
-
-# ==============================
-# Optional: Live camera feed (disabled on Render)
-# ==============================
-# def video_feed(request, camera_index):
-#     return JsonResponse({"success": False, "message": "Live camera not supported on Render."})
