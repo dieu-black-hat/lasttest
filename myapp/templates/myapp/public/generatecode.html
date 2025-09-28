@@ -92,7 +92,8 @@
     <div id="scanSection">
         <h2>Live Video Feed with Navigation Path</h2>
         <div id="videoContainer">
-            <img src="/video_feed/0/" id="video" alt="Live Feed could not be loaded">
+            <!-- Fallback: we’ll switch between server feed and browser webcam -->
+            <video id="video" autoplay playsinline></video>
             <div id="loadingMessage">Loading camera feed...</div>
         </div>
         <button id="refreshButton">🔄 Refresh Feed</button>
@@ -137,36 +138,49 @@
         document.getElementById('printButton').addEventListener('click', () => window.print());
 
         // ------------------------
-        // Video feed handling
+        // Video feed handling (Localhost vs Render)
         // ------------------------
         const video = document.getElementById('video');
         const statusMessage = document.getElementById('statusMessage');
         const loadingMessage = document.getElementById('loadingMessage');
+        const refreshButton = document.getElementById('refreshButton');
 
-        function refreshVideo() {
-            loadingMessage.style.display = "block";
-            video.src = "/video_feed/0/?t=" + new Date().getTime(); // cache-busting reload
+        // Try loading from Django backend first (only works on localhost with OpenCV)
+        function tryServerFeed() {
+            const testImg = new Image();
+            testImg.src = "/video_feed/0/?t=" + new Date().getTime();
+            testImg.onload = () => {
+                // Server feed works, replace video element with image
+                video.outerHTML = `<img id="video" src="${testImg.src}" alt="Live Feed">`;
+                statusMessage.textContent = "Live AR Navigation (Server Camera)";
+                statusMessage.style.color = "green";
+            };
+            testImg.onerror = () => {
+                // Fall back to browser webcam
+                initBrowserCamera();
+            };
+        }
+
+        // Use browser webcam
+        function initBrowserCamera() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    statusMessage.textContent = "Live AR Navigation (Browser Camera)";
+                    statusMessage.style.color = "blue";
+                })
+                .catch(err => {
+                    console.error("Camera access error:", err);
+                    statusMessage.textContent = "❌ Cannot access camera";
+                    statusMessage.style.color = "red";
+                });
         }
 
         // Refresh button
-        document.getElementById('refreshButton').addEventListener('click', refreshVideo);
+        refreshButton.addEventListener("click", tryServerFeed);
 
-        // Show loading until video is loaded
-        video.addEventListener("load", () => {
-            loadingMessage.style.display = "none";
-            statusMessage.textContent = "Live AR Navigation Active";
-            statusMessage.style.color = "green";
-        });
-
-        // Error handling
-        video.addEventListener("error", () => {
-            loadingMessage.style.display = "none";
-            statusMessage.textContent = "❌ Error: Cannot load camera feed";
-            statusMessage.style.color = "red";
-        });
-
-        // Auto-reconnect every 60s
-        setInterval(refreshVideo, 60000);
+        // Start on page load
+        tryServerFeed();
     </script>
 </body>
 </html>
