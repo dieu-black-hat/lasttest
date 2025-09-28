@@ -3,14 +3,8 @@ from django import forms
 from .models import Registration
 from django.contrib.auth.hashers import make_password
 from django.contrib import messages  # Import messages framework
-from django.http import JsonResponse, StreamingHttpResponse
-from django.views.decorators.csrf import csrf_exempt
-import cv2
-import numpy as np
 
-# ==============================
 # Views for rendering pages
-# ==============================
 def index(request):
     return render(request, 'myapp/public/index.html')
 
@@ -26,16 +20,16 @@ def camera(request):
 def generatecode(request):
     return render(request, 'myapp/public/generatecode.html')
 
+
+
+
 def room(request):
     return render(request, 'myapp/public/room.html')
 
 def login(request):
     return render(request, 'myapp/public/login.html')
 
-
-# ==============================
 # Registration model form
-# ==============================
 class RegistrationForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput)
 
@@ -50,26 +44,27 @@ class RegistrationForm(forms.ModelForm):
             user.save()
         return user
 
-
-# ==============================
 # Registration view
-# ==============================
 def register(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Registration successful!')
-            return redirect('login')
+            messages.success(request, 'Registration successful!')  # Add success message
+            return redirect('login')  # Redirect to login page or any other page
         else:
-            messages.error(request, 'Please correct the errors below.')
+            messages.error(request, 'Please correct the errors below.')  # Add error message
     else:
         form = RegistrationForm()
     return render(request, 'myapp/public/register.html', {'form': form})
 
+from django.http import JsonResponse, StreamingHttpResponse
+from django.views.decorators.csrf import csrf_exempt
+import cv2
+import numpy as np
 
 # ==============================
-# Example location mapping
+# Example location mapping for IDs with coordinates
 # ==============================
 LOCATION_MAPPING = {
     0: {"name": "Location A", "coords": (0, 0)},
@@ -85,14 +80,13 @@ LOCATION_MAPPING = {
 }
 
 # ==============================
-# Camera calibration
+# Camera calibration parameters
 # ==============================
 camera_matrix = np.array([[800, 0, 320],
                           [0, 800, 240],
                           [0, 0, 1]], dtype=np.float32)
-dist_coeffs = np.zeros((5, 1))
-MARKER_SIZE = 0.05  # meters
-
+dist_coeffs = np.zeros((5, 1))  # Update with actual calibration if available
+MARKER_SIZE = 0.05  # Marker size in meters
 
 # ==============================
 # Generate ArUco codes
@@ -119,9 +113,8 @@ def generate_aruco_codes(request):
 
     return JsonResponse({'success': False}, status=400)
 
-
 # ==============================
-# Video Feed Generator
+# Generate live frames with AR overlay (persistent arrow)
 # ==============================
 def generate_frames(camera_index):
     cap = cv2.VideoCapture(camera_index)
@@ -129,6 +122,7 @@ def generate_frames(camera_index):
     parameters = cv2.aruco.DetectorParameters()
     detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
 
+    # Store last arrow and text to persist on screen
     last_arrow = None
     last_text = {"current": None, "next": None}
 
@@ -144,30 +138,39 @@ def generate_frames(camera_index):
             if ids is not None:
                 cv2.aruco.drawDetectedMarkers(frame, corners, ids)
 
+                # Pose estimation
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(
                     corners, MARKER_SIZE, camera_matrix, dist_coeffs
                 )
+
+                # Select closest marker
                 closest_index = np.argmin(tvecs[:, 0, 2])
                 marker_id = int(ids[closest_index][0])
                 rvec, tvec = rvecs[closest_index], tvecs[closest_index]
 
+                # Draw axis for visualization
                 cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.05)
 
+                # Compute arrow to next location
                 current_location = LOCATION_MAPPING.get(marker_id, {"name": "Unknown", "coords": (0, 0)})
                 next_id = marker_id + 1 if marker_id + 1 in LOCATION_MAPPING else None
 
                 if next_id is not None:
                     next_location = LOCATION_MAPPING[next_id]
+
                     dx = next_location['coords'][0] - current_location['coords'][0]
                     dy = next_location['coords'][1] - current_location['coords'][1]
+                    dz = 0
 
+                    # Scale vector so it's visible in AR space
                     scale = 5.0
-                    arrow_3D = np.float32([[0, 0, 0], [dx * scale, dy * scale, 0]])
+                    arrow_3D = np.float32([[0, 0, 0], [dx * scale, dy * scale, dz]])
                     imgpts, _ = cv2.projectPoints(arrow_3D, rvec, tvec, camera_matrix, dist_coeffs)
 
                     pt1 = tuple(imgpts[0].ravel().astype(int))
                     pt2 = tuple(imgpts[1].ravel().astype(int))
 
+                    # Save arrow + labels persistently
                     last_arrow = (pt1, pt2)
                     last_text["current"] = current_location['name']
                     last_text["next"] = next_location['name']
@@ -176,17 +179,23 @@ def generate_frames(camera_index):
                     last_text["current"] = current_location['name']
                     last_text["next"] = "End of Path"
 
+            # ---------------------------
+            # Draw last arrow if available
+            # ---------------------------
             if last_arrow is not None:
-                cv2.arrowedLine(frame, last_arrow[0], last_arrow[1], (0, 255, 0), 8, tipLength=0.4)
+                pt1, pt2 = last_arrow
+                cv2.arrowedLine(frame, pt1, pt2, (0, 255, 0), 8, tipLength=0.4)
 
             if last_text["current"]:
                 cv2.putText(frame, f"Current: {last_text['current']}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
             if last_text["next"]:
                 color = (255, 0, 0) if last_text["next"] != "End of Path" else (0, 0, 255)
                 cv2.putText(frame, f"Next: {last_text['next']}",
                             (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
+            # Encode frame
             ret, buffer = cv2.imencode('.jpg', frame)
             frame_bytes = buffer.tobytes()
 
@@ -195,30 +204,16 @@ def generate_frames(camera_index):
     finally:
         cap.release()
 
-
 # ==============================
-# Video feed endpoint (auto switchable)
+# Video feed endpoint
 # ==============================
-def video_feed(request):
-    camera_index = request.session.get("camera_index", 0)  # default is 0
+def video_feed(request, camera_index):
+    camera_index = int(camera_index)
     return StreamingHttpResponse(generate_frames(camera_index),
                                  content_type='multipart/x-mixed-replace; boundary=frame')
 
-
 # ==============================
-# Switch camera endpoint
-# ==============================
-@csrf_exempt
-def switch_camera(request):
-    """Toggle between default (0) and USB (1) camera"""
-    current_index = request.session.get("camera_index", 0)
-    new_index = 1 if current_index == 0 else 0
-    request.session["camera_index"] = new_index
-    return JsonResponse({"success": True, "camera_index": new_index})
-
-
-# ==============================
-# Scan uploaded image
+# Scan uploaded image for ArUco markers
 # ==============================
 @csrf_exempt
 def scan_aruco(request):
@@ -248,9 +243,10 @@ def scan_aruco(request):
                 next_location = LOCATION_MAPPING[next_id]
                 dx = next_location['coords'][0] - current_location['coords'][0]
                 dy = next_location['coords'][1] - current_location['coords'][1]
+                dz = 0
 
                 scale = 5.0
-                arrow_3D = np.float32([[0, 0, 0], [dx * scale, dy * scale, 0]])
+                arrow_3D = np.float32([[0, 0, 0], [dx * scale, dy * scale, dz]])
                 imgpts, _ = cv2.projectPoints(arrow_3D, rvec, tvec, camera_matrix, dist_coeffs)
 
                 pt1 = tuple(imgpts[0].ravel().tolist())
