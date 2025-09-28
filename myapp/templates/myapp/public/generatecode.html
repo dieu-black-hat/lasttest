@@ -52,33 +52,10 @@
             max-width: 90%;
             height: auto;
         }
-        #loadingMessage {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 1.2em;
-            background: rgba(255,255,255,0.8);
-            padding: 10px 20px;
-            border-radius: 8px;
-            display: none;
-        }
         #statusMessage {
             margin-top: 10px;
             font-weight: bold;
             color: green;
-        }
-        #refreshButton {
-            margin-top: 10px;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            background: #007BFF;
-            color: white;
-            cursor: pointer;
-        }
-        #refreshButton:hover {
-            background: #0056b3;
         }
     </style>
 </head>
@@ -92,11 +69,9 @@
     <div id="scanSection">
         <h2>Live Video Feed with Navigation Path</h2>
         <div id="videoContainer">
-            <img src="/video_feed/0/" id="video" alt="Live Feed could not be loaded">
-            <div id="loadingMessage">Loading camera feed...</div>
+            <video id="video" autoplay playsinline></video>
         </div>
-        <button id="refreshButton">🔄 Refresh Feed</button>
-        <div id="statusMessage">Live AR Navigation Active</div>
+        <div id="statusMessage">Initializing camera...</div>
     </div>
 
     <script>
@@ -137,36 +112,56 @@
         document.getElementById('printButton').addEventListener('click', () => window.print());
 
         // ------------------------
-        // Video feed handling
+        // Webcam setup
         // ------------------------
-        const video = document.getElementById('video');
-        const statusMessage = document.getElementById('statusMessage');
-        const loadingMessage = document.getElementById('loadingMessage');
+        const videoElement = document.getElementById("video");
+        const statusMessage = document.getElementById("statusMessage");
 
-        function refreshVideo() {
-            loadingMessage.style.display = "block";
-            video.src = "/video_feed/0/?t=" + new Date().getTime(); // cache-busting reload
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElement.srcObject = stream;
+                statusMessage.textContent = "✅ Live AR Navigation Active";
+                statusMessage.style.color = "green";
+            } catch (err) {
+                console.error("Camera access denied:", err);
+                statusMessage.textContent = "❌ Cannot access webcam";
+                statusMessage.style.color = "red";
+            }
         }
 
-        // Refresh button
-        document.getElementById('refreshButton').addEventListener('click', refreshVideo);
+        startCamera();
 
-        // Show loading until video is loaded
-        video.addEventListener("load", () => {
-            loadingMessage.style.display = "none";
-            statusMessage.textContent = "Live AR Navigation Active";
-            statusMessage.style.color = "green";
-        });
+        // ------------------------
+        // Send frames to Django for ArUco scanning
+        // ------------------------
+        async function captureFrameAndSend() {
+            if (videoElement.readyState < 2) return; // not ready yet
 
-        // Error handling
-        video.addEventListener("error", () => {
-            loadingMessage.style.display = "none";
-            statusMessage.textContent = "❌ Error: Cannot load camera feed";
-            statusMessage.style.color = "red";
-        });
+            const canvas = document.createElement("canvas");
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(videoElement, 0, 0);
 
-        // Auto-reconnect every 60s
-        setInterval(refreshVideo, 60000);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg"));
+            const formData = new FormData();
+            formData.append("image", blob, "frame.jpg");
+
+            try {
+                const response = await fetch("/scan_aruco/", {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await response.json();
+                console.log("Detection result:", data);
+            } catch (err) {
+                console.error("Error sending frame:", err);
+            }
+        }
+
+        // Capture and send every 2 seconds
+        setInterval(captureFrameAndSend, 2000);
     </script>
 </body>
 </html>
