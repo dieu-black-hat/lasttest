@@ -1,10 +1,17 @@
 from django.shortcuts import render, redirect
 from django import forms
-from .models import Registration
 from django.contrib.auth.hashers import make_password
-from django.contrib import messages  # Import messages framework
+from django.contrib import messages
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import cv2
+import numpy as np
+import os
 
-# Views for rendering pages
+# ==============================
+# Placeholder views for pages
+# ==============================
 def index(request):
     return render(request, 'myapp/public/index.html')
 
@@ -20,16 +27,18 @@ def camera(request):
 def generatecode(request):
     return render(request, 'myapp/public/generatecode.html')
 
-
-
-
 def room(request):
     return render(request, 'myapp/public/room.html')
 
 def login(request):
     return render(request, 'myapp/public/login.html')
 
-# Registration model form
+
+# ==============================
+# Registration form & view
+# ==============================
+from .models import Registration
+
 class RegistrationForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput)
 
@@ -44,43 +53,42 @@ class RegistrationForm(forms.ModelForm):
             user.save()
         return user
 
-# Registration view
 def register(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Registration successful!')  # Add success message
-            return redirect('login')  # Redirect to login page or any other page
+            messages.success(request, 'Registration successful!')
+            return redirect('login')
         else:
-            messages.error(request, 'Please correct the errors below.')  # Add error message
+            messages.error(request, 'Please correct the errors below.')
     else:
         form = RegistrationForm()
     return render(request, 'myapp/public/register.html', {'form': form})
 
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import cv2
-import numpy as np
-import os
 
 # ==============================
-# Example location mapping
+# ArUco & Camera setup
 # ==============================
 LOCATION_MAPPING = {
     0: {"name": "Location A", "coords": (0, 0)},
     1: {"name": "Location B", "coords": (1, 0)},
-    # ... etc
+    2: {"name": "Location C", "coords": (2, 0)},
+    3: {"name": "Location D", "coords": (3, 0)},
+    4: {"name": "Location E", "coords": (4, 0)},
+    5: {"name": "Location F", "coords": (5, 0)},
+    6: {"name": "Location G", "coords": (6, 0)},
+    7: {"name": "Location H", "coords": (7, 0)},
+    8: {"name": "Location I", "coords": (8, 0)},
+    9: {"name": "Location J", "coords": (9, 0)},
 }
 
-# ==============================
-# Camera calibration parameters
-# ==============================
 camera_matrix = np.array([[800, 0, 320],
                           [0, 800, 240],
                           [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.zeros((5, 1))
 MARKER_SIZE = 0.05
+
 
 # ==============================
 # Generate ArUco codes
@@ -92,7 +100,8 @@ def generate_aruco_codes(request):
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         generated_files = []
 
-        output_dir = os.path.join("static", "aruco_codes")
+        # Save codes in MEDIA_ROOT
+        output_dir = os.path.join(settings.MEDIA_ROOT, "aruco_codes")
         os.makedirs(output_dir, exist_ok=True)
 
         for i in range(num_codes):
@@ -103,12 +112,13 @@ def generate_aruco_codes(request):
             generated_files.append({
                 'id': str(i),
                 'location': LOCATION_MAPPING[i]['name'],
-                'file': f'/static/aruco_codes/aruco_code_{i}.png'
+                'file': f"{settings.MEDIA_URL}aruco_codes/aruco_code_{i}.png"
             })
 
         return JsonResponse({'success': True, 'files': generated_files})
 
     return JsonResponse({'success': False}, status=400)
+
 
 # ==============================
 # Scan uploaded image for ArUco markers
@@ -162,3 +172,10 @@ def scan_aruco(request):
         return JsonResponse({"success": False, "message": "No markers detected"})
 
     return JsonResponse({"success": False, "message": "Invalid request"}, status=400)
+
+
+# ==============================
+# Optional: Live camera feed (disabled on Render)
+# ==============================
+# def video_feed(request, camera_index):
+#     return JsonResponse({"success": False, "message": "Live camera not supported on Render."})
