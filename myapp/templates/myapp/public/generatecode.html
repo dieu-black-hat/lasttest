@@ -39,11 +39,29 @@
             align-items: center;
             width: 100%;
         }
-        video {
+        #videoContainer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            position: relative;
+        }
+        #video {
             border: 2px solid #444;
             border-radius: 10px;
             max-width: 90%;
             height: auto;
+        }
+        #loadingMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2em;
+            background: rgba(255,255,255,0.8);
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: none;
         }
         #statusMessage {
             margin-top: 10px;
@@ -55,7 +73,7 @@
             padding: 8px 16px;
             border: none;
             border-radius: 6px;
-            background: #007bff;
+            background: #007BFF;
             color: white;
             cursor: pointer;
         }
@@ -72,17 +90,19 @@
     <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
     <div id="scanSection">
-        <h2>Live Webcam (Browser)</h2>
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-        <button id="refreshButton">🔄 Refresh Feed (Switch Camera)</button>
-        <div id="statusMessage">Camera ready</div>
+        <h2>Live Video Feed with Navigation Path</h2>
+        <div id="videoContainer">
+            <img src="/video_feed/0/" id="video" alt="Live Feed could not be loaded">
+            <div id="loadingMessage">Loading camera feed...</div>
+        </div>
+        <button id="refreshButton">🔄 Refresh Feed</button>
+        <div id="statusMessage">Live AR Navigation Active</div>
     </div>
 
     <script>
-        // ======================
+        // ------------------------
         // Generate ArUco Codes
-        // ======================
+        // ------------------------
         document.getElementById('generateButton').addEventListener('click', () => {
             const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             fetch('/generate-aruco/', {
@@ -108,9 +128,7 @@
                         container.appendChild(label);
                         resultDiv.appendChild(container);
                     });
-                } else {
-                    alert('Failed to generate codes.');
-                }
+                } else { alert('Failed to generate codes.'); }
             })
             .catch(err => { console.error(err); alert('Error generating codes.'); });
         });
@@ -118,84 +136,37 @@
         // Print button
         document.getElementById('printButton').addEventListener('click', () => window.print());
 
-        // ======================
-        // Webcam Access + Auto Scan
-        // ======================
-        const video = document.getElementById("webcam");
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
-        const statusMessage = document.getElementById("statusMessage");
+        // ------------------------
+        // Video feed handling
+        // ------------------------
+        const video = document.getElementById('video');
+        const statusMessage = document.getElementById('statusMessage');
+        const loadingMessage = document.getElementById('loadingMessage');
 
-        let currentCamera = 0;
-        let stream;
-
-        function startCamera(cameraId) {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop()); // stop old stream
-            }
-
-            navigator.mediaDevices.getUserMedia({ video: { deviceId: cameraId ? { exact: cameraId } : undefined } })
-                .then(newStream => {
-                    stream = newStream;
-                    video.srcObject = stream;
-                    statusMessage.textContent = "Camera ready ✅";
-                    statusMessage.style.color = "green";
-                })
-                .catch(err => {
-                    statusMessage.textContent = "❌ Camera access denied or unavailable";
-                    statusMessage.style.color = "red";
-                });
+        function refreshVideo() {
+            loadingMessage.style.display = "block";
+            video.src = "/video_feed/0/?t=" + new Date().getTime(); // cache-busting reload
         }
 
-        // Start default camera
-        startCamera();
+        // Refresh button
+        document.getElementById('refreshButton').addEventListener('click', refreshVideo);
 
-        // Refresh Feed (Switch Camera)
-        document.getElementById("refreshButton").addEventListener("click", async () => {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(device => device.kind === "videoinput");
-            if (videoDevices.length > 1) {
-                currentCamera = (currentCamera + 1) % videoDevices.length;
-                startCamera(videoDevices[currentCamera].deviceId);
-            } else {
-                alert("No additional camera detected");
-            }
+        // Show loading until video is loaded
+        video.addEventListener("load", () => {
+            loadingMessage.style.display = "none";
+            statusMessage.textContent = "Live AR Navigation Active";
+            statusMessage.style.color = "green";
         });
 
-        // ======================
-        // Auto Scan Every 2 Seconds
-        // ======================
-        setInterval(() => {
-            if (!video.videoWidth || !video.videoHeight) return;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Error handling
+        video.addEventListener("error", () => {
+            loadingMessage.style.display = "none";
+            statusMessage.textContent = "❌ Error: Cannot load camera feed";
+            statusMessage.style.color = "red";
+        });
 
-            canvas.toBlob(blob => {
-                const formData = new FormData();
-                formData.append("image", blob, "frame.jpg");
-
-                fetch("/scan_aruco/", {
-                    method: "POST",
-                    body: formData
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        statusMessage.textContent = `✅ Found ID: ${data.id}, Location: ${data.location}, Next: ${data.next_location}`;
-                        statusMessage.style.color = "green";
-                    } else {
-                        statusMessage.textContent = "⚠️ No markers detected";
-                        statusMessage.style.color = "orange";
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    statusMessage.textContent = "❌ Error scanning frame";
-                    statusMessage.style.color = "red";
-                });
-            }, "image/jpeg");
-        }, 2000); // scan every 2 seconds
+        // Auto-reconnect every 60s
+        setInterval(refreshVideo, 60000);
     </script>
 </body>
 </html>
